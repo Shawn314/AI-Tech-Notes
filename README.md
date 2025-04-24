@@ -1,6 +1,3 @@
----
-
-```markdown
 # AI-Tech-Notes
 
 📘 **Technical Notes · Translations · LLM Engineering**
@@ -61,4 +58,3 @@ Feel free to reach out for collaboration or discussion!
 
 If you find this repo helpful, feel free to give it a ⭐️  
 You're also welcome to open Issues to suggest improvements or start a discussion.
-```
