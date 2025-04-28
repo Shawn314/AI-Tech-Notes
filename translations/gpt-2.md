@@ -238,3 +238,104 @@ OpenAI的GPT-2模型使用的正是这些仅解码器模块。
 - 有时我需要显示更多的框来表示一个向量，我将这些表示为“放大”。例如：
   
 ![](https://jalammar.github.io/images/gpt2/zoom-in.png)
+
+
+## 第二部分：图解自注意力机制
+
+在本文前面，我们展示了这样一张图片，展示了自注意力（Self-Attention）如何应用在处理单词 "it" 的一层中：
+
+![](https://jalammar.github.io/images/gpt2/gpt2-self-attention-1-2.png)
+
+在本节中，我们将详细探讨这一过程是如何实现的。  
+需要注意的是，我们会以一种能够理解每个单词变化的方式来讲解。  
+因此，你会看到很多单个向量的示意图。  
+实际上，真实的实现过程是通过巨大的矩阵相乘来完成的，但这里我们更关注每个单词层面的直观理解。
+
+### 自注意力机制（无掩码）
+
+我们先从编码器模块中最初的自注意力计算方式开始讲起。  
+假设我们有一个简化版的小型 Transformer 块，每次只能处理 4 个 token。
+
+自注意力的计算主要分为三个步骤：
+
+1. 为每个路径创建查询（Query）、键（Key）、值（Value）向量。
+2. 对于每个输入的 token，使用它的查询向量去与所有其他的键向量进行打分。
+3. 将所有值向量乘以对应的分数后相加，得到最终结果。
+
+![](https://jalammar.github.io/images/xlnet/self-attention-summary.png)
+
+#### 1 - 创建查询（Query）、键（Key）、值（Value）向量
+
+让我们专注于第一个路径（token）。  
+我们将提取它的查询向量，并将其与所有键向量进行对比，从而为每个键生成一个得分（Score）。  
+自注意力的第一步，就是为每一个 token 路径计算出三种向量（这里我们暂时忽略多头注意力机制）：
+
+![](https://jalammar.github.io/images/xlnet/self-attention-1.png)
+
+#### 2 - 打分（Score）
+
+现在我们已经有了这些向量，第二步只需要用查询向量和键向量。  
+由于我们关注的是第一个 token，我们用它的查询向量去分别与四个 token 的键向量进行点积运算，从而为每个 token 计算出一个得分。
+
+![](https://jalammar.github.io/images/xlnet/self-attention-2.png)
+
+#### 3 - 加权求和（Sum）
+
+接下来，我们将这些得分与对应的值向量相乘。  
+得分越高的值向量，在最终相加得到的结果向量中所占的比例也越大。
+
+![alt text](https://jalammar.github.io/images/xlnet/self-attention-3-2.png)
+
+> 为了直观展示：得分越低的值向量，我们会以更透明的方式呈现，表示它们被乘以一个很小的数后对结果的贡献较小。 
+
+如果我们对每一条路径都进行相同的操作，最终就能为每个 token 得到一个新的向量，  
+这个向量包含了该 token 所需的上下文信息。
+
+随后，这些向量将被送入 Transformer 块的下一个子层 —— 前馈神经网络（Feed-Forward Neural Network）。
+
+![alt text](https://jalammar.github.io/images/xlnet/self-attention-summary.png)
+
+### 图解掩码自注意力机制（Masked Self-Attention）
+
+在了解了 Transformer 中自注意力（Self-Attention）的工作机制之后，  
+现在我们来看看掩码自注意力（Masked Self-Attention）。
+
+掩码自注意力与普通自注意力基本相同，只是在第 2 步（打分）时有所不同。  
+假设模型的输入中只有两个 token，而我们正在处理第二个 token。  
+在这种情况下，未来的 token 会被屏蔽（masked）。  
+也就是说，在打分步骤中，模型会干预，使得对未来 token 的打分总是 0，  
+这样模型就无法偷看未来的单词：
+
+![alt text](https://jalammar.github.io/images/xlnet/masked-self-attention-2.png)
+
+通常，这种屏蔽是通过一个叫做 **注意力掩码（attention mask）** 的矩阵来实现的。  
+想象一组四个单词组成的序列（比如 “robot must obey orders”）。  
+在语言建模任务中，这个序列会被分四步输入模型 —— 每步输入一个单词（这里假设每个单词对应一个 token）。
+
+![alt text](https://jalammar.github.io/images/gpt2/transformer-decoder-attention-mask-dataset.png)
+
+由于这些模型是按批次（batch）工作的，  
+我们可以假设这个小型示例的 batch size 为 4，  
+即一次性处理完整的四步序列。
+
+在矩阵运算中，得分是通过将查询矩阵（queries matrix）与键矩阵（keys matrix）相乘得到的。  
+可以将它想象为一个表格，只不过每个单元格里放的是对应单词的查询或键向量：
+
+![alt text](https://jalammar.github.io/images/gpt2/queries-keys-attention-mask.png)
+
+完成矩阵相乘后，我们应用一个掩码三角形（attention mask triangle）。  
+掩码会将我们不想看到的位置设为负无穷（或者非常大的负数，比如在 GPT-2 中是 -10^9）。
+
+![alt text](https://jalammar.github.io/images/gpt2/transformer-attention-mask.png)
+
+然后，在每一行应用 softmax 函数，得到真正用于自注意力的得分（scores）：
+
+![alt text](https://jalammar.github.io/images/gpt2/transformer-attention-masked-scores-softmax.png)
+
+这些得分表的含义如下：
+
+- 当模型处理第一个样本（第 1 行，即单词 “robot”）时，  
+  100% 的注意力会集中在这个单词上。
+- 当模型处理第二个样本（第 2 行，即单词序列 “robot must”）时，  
+  处理单词 “must” 时，48% 的注意力放在 “robot”，52% 的注意力放在 “must”。
+- 以此类推。
